@@ -80,10 +80,10 @@ function CitizenDashboard() {
       </span>
     </div>
 
-    {/* 🔥 IMAGE DISPLAY ADDED HERE */}
+    {/* IMAGE DISPLAY - handle both full URLs and just filenames */}
     {issue.image && (
       <img
-        src={`${API_BASE_URL}/uploads/${issue.image}`}
+        src={issue.image.startsWith('http') ? issue.image : `${API_BASE_URL}/uploads/${issue.image}`}
         alt="Issue"
         style={{
           width: "250px",
@@ -92,6 +92,14 @@ function CitizenDashboard() {
           borderRadius: "8px",
           marginBottom: "10px",
           border: "1px solid #ccc"
+        }}
+        onError={(e) => {
+          // Fallback: try with API_BASE_URL if direct URL fails
+          if (!issue.image.startsWith('http')) {
+            e.target.src = `${API_BASE_URL}/uploads/${issue.image}`;
+          } else {
+            e.target.style.display = 'none';
+          }
         }}
       />
     )}

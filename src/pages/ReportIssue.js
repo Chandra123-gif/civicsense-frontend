@@ -18,6 +18,226 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require("leaflet/dist/images/marker-shadow.png"),
 });
 
+// Keyword mapping for issue types (MobileNet ImageNet labels)
+const ISSUE_KEYWORDS = {
+
+  // 1️⃣ Pothole (Surface cavity only)
+  pothole: [
+    'pothole',
+    'road crack',
+    'asphalt crack',
+    'broken asphalt',
+    'road cavity',
+    'crater',
+    'road depression',
+    'surface hole',
+    'collapsed asphalt',
+    'circular hole in road',
+    'damaged pavement surface',
+    'cracked tar',
+    'bitumen crack',
+    'road surface fracture',
+    'sunken asphalt',
+    'uneven road surface',
+    'asphalt erosion',
+    'blacktop crack',
+    'pavement fracture',
+    'road sinkhole',
+    'surface cavity',
+    'road rupture',
+    'tar road crack',
+    'road surface damage',
+    'asphalt surface break',
+    'cracked roadway',
+    'eroded asphalt',
+    'damaged tar surface',
+    'road hole damage',
+    'road wear erosion'
+  ],
+
+  // 2️⃣ Garbage (Waste objects only)
+  garbage: [
+    'trash',
+    'garbage',
+    'plastic waste',
+    'plastic bottle',
+    'paper plate',
+    'food waste',
+    'waste pile',
+    'litter',
+    'trash bag',
+    'overflowing bin',
+    'garbage bag',
+    'waste container',
+    'dumpster',
+    'scattered waste',
+    'dirty waste',
+    'waste heap',
+    'rubbish',
+    'recyclable waste',
+    'metal can',
+    'discarded bottle',
+    'polythene bag',
+    'paper waste',
+    'household waste',
+    'organic waste',
+    'rotting waste',
+    'trash can',
+    'waste barrel',
+    'junk pile',
+    'refuse waste',
+    'waste overflow area'
+  ],
+
+  // 3️⃣ Streetlight Failure (Lighting infrastructure only)
+  streetlight: [
+    'street light',
+    'lamp post',
+    'light pole',
+    'streetlamp',
+    'traffic signal light',
+    'signal pole',
+    'electric pole',
+    'lamp fixture',
+    'broken light bulb',
+    'damaged streetlamp',
+    'lighting pole',
+    'roadside lamp',
+    'public lighting pole',
+    'lamp housing',
+    'metal lighting pole',
+    'tall light pole',
+    'lighting column',
+    'electric lighting unit',
+    'municipal light pole',
+    'lamp arm structure',
+    'pole mounted lamp',
+    'overhead lighting pole',
+    'signal head light',
+    'bulb fixture',
+    'lighting infrastructure',
+    'electric street lamp',
+    'urban light pole',
+    'road illumination pole',
+    'lamp support pole',
+    'street lighting unit'
+  ],
+
+  // 4️⃣ Drainage Issue (Water drainage structures only)
+  drainage_issue: [
+    'drain',
+    'sewer',
+    'manhole',
+    'gutter',
+    'storm drain',
+    'blocked drain',
+    'open manhole',
+    'drain cover',
+    'water overflow drain',
+    'sewage water',
+    'drain pipe',
+    'flooded drain',
+    'drainage channel',
+    'drain outlet',
+    'sewer lid',
+    'clogged drain',
+    'water logging',
+    'overflowing sewer',
+    'drain blockage',
+    'stormwater drain',
+    'drain grate',
+    'sewer opening',
+    'flooded gutter',
+    'sewage leakage',
+    'wastewater flow',
+    'drain pit',
+    'municipal drain channel',
+    'underground sewer',
+    'drain slab',
+    'sewer overflow area'
+  ],
+
+  // 5️⃣ Road Structural Damage (NOT pothole)
+  damaged_road: [
+    'collapsed bridge',
+    'broken divider',
+    'damaged barrier',
+    'broken guardrail',
+    'road barrier damage',
+    'bridge structural crack',
+    'damaged flyover',
+    'roadside railing',
+    'concrete breakage',
+    'bridge surface crack',
+    'road edge collapse',
+    'cracked divider structure',
+    'broken curb',
+    'damaged median',
+    'roadside concrete break',
+    'bridge damage',
+    'sidewalk collapse',
+    'road structure damage',
+    'broken concrete slab',
+    'infrastructure damage',
+    'road boundary crack',
+    'broken retaining wall',
+    'flyover damage',
+    'collapsed concrete structure',
+    'road railing damage',
+    'divider collapse',
+    'damaged overpass',
+    'cracked embankment',
+    'concrete fracture',
+    'roadside structure collapse'
+  ],
+
+  // 6️⃣ Other (Always allowed)
+  other: []
+};
+
+
+// Function to check if any prediction matches issue type keywords
+const validatePrediction = (predictions, issueType) => {
+  if (!issueType || issueType === 'other') return { isValid: true, matchedLabels: [] };
+
+  const keywords = ISSUE_KEYWORDS[issueType] || [];
+  if (keywords.length === 0) return { isValid: true, matchedLabels: [] };
+
+  const matchedLabels = [];
+
+  for (const prediction of predictions) {
+    const label = prediction.className.toLowerCase();
+    const confidence = prediction.probability;
+
+    // Check if any keyword matches the prediction
+    for (const keyword of keywords) {
+      if (label.includes(keyword.toLowerCase()) || keyword.toLowerCase().includes(label)) {
+        matchedLabels.push({
+          label: prediction.className,
+          confidence: (confidence * 100).toFixed(1)
+        });
+      }
+    }
+  }
+
+  // If we found matches, validation passes
+  if (matchedLabels.length > 0) {
+    return { isValid: true, matchedLabels };
+  }
+
+  // If no matches found, check top predictions for better UX
+  const topPredictions = predictions.slice(0, 5).map(p => ({
+    label: p.className,
+    confidence: (p.probability * 100).toFixed(1)
+  }));
+
+  return {
+    isValid: false,
+    matchedLabels: [],
+    topPredictions
+  };
+};
+
 function ReportIssue() {
   const [formData, setFormData] = useState({
     issueType: '',
@@ -45,11 +265,110 @@ function ReportIssue() {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [previewSrc, setPreviewSrc] = useState(null);
-const [model, setModel] = useState(null);
-const [aiResult, setAiResult] = useState("");
-const [videoDevices, setVideoDevices] = useState([]);
-const [currentDeviceId, setCurrentDeviceId] = useState(null);
+  const [model, setModel] = useState(null);
+  const [aiResult, setAiResult] = useState("");
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [currentDeviceId, setCurrentDeviceId] = useState(null);
 
+  // AI Validation State Variables
+  const [isModelLoading, setIsModelLoading] = useState(true);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState(null); // null | 'pass' | 'fail'
+  const [detectedLabels, setDetectedLabels] = useState([]);
+  const [topPredictions, setTopPredictions] = useState([]);
+
+  // Load MobileNet model on component mount
+  useEffect(() => {
+    const loadModel = async () => {
+      try {
+        setIsModelLoading(true);
+        console.log('Loading MobileNet model...');
+
+        // Load the MobileNet model
+        const loadedModel = await mobilenet.load({
+          version: 2,
+          alpha: 1.0
+        });
+
+        setModel(loadedModel);
+        console.log('MobileNet model loaded successfully');
+        setIsModelLoading(false);
+      } catch (error) {
+        console.error('Failed to load MobileNet model:', error);
+        setIsModelLoading(false);
+        setError('AI model failed to load. Image validation will be skipped.');
+      }
+    };
+
+    loadModel();
+
+    // Cleanup model from memory on unmount
+    return () => {
+      if (model) {
+        // TensorFlow.js cleanup
+        tf.disposeVariables();
+      }
+    };
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // cleanup camera stream and object URLs
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (previewSrc) URL.revokeObjectURL(previewSrc);
+    };
+  }, [previewSrc]);
+
+  // Function to validate image using MobileNet
+  const validateImage = async (imageUrl, issueType) => {
+    if (!model) {
+      console.warn('Model not loaded, skipping validation');
+      return { isValid: true, matchedLabels: [] };
+    }
+
+    if (!imageUrl || !issueType) {
+      return { isValid: true, matchedLabels: [] };
+    }
+
+    setIsValidating(true);
+    setValidationResult(null);
+    setDetectedLabels([]);
+    setTopPredictions([]);
+
+    try {
+      // Create an image element
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imageUrl;
+      });
+
+      // Run classification
+      const predictions = await model.classify(img);
+      console.log('MobileNet predictions:', predictions);
+
+      // Validate predictions
+      const result = validatePrediction(predictions, issueType);
+
+      setValidationResult(result.isValid ? 'pass' : 'fail');
+      setDetectedLabels(result.matchedLabels);
+      setTopPredictions(result.topPredictions || []);
+
+      setIsValidating(false);
+      return result;
+
+    } catch (error) {
+      console.error('Image validation error:', error);
+      setIsValidating(false);
+      return { isValid: true, matchedLabels: [] };
+    }
+  };
 
   const handleLocationChange = (e) => {
     const { name, value } = e.target;
@@ -79,79 +398,118 @@ const [currentDeviceId, setCurrentDeviceId] = useState(null);
       try {
         const url = URL.createObjectURL(e.target.files[0]);
         setPreviewSrc(url);
+        
+        // Run AI validation when image is selected
+        if (formData.issueType && formData.issueType !== 'other') {
+          validateImage(url, formData.issueType).then(result => {
+            console.log('AI Validation result:', result);
+          });
+        }
       } catch (err) {
         setPreviewSrc(null);
       }
     }
   };
 
-  useEffect(() => {
-    return () => {
-      // cleanup camera stream and object URLs
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-      }
-      if (previewSrc) URL.revokeObjectURL(previewSrc);
-    };
-  }, [previewSrc]);
   const stopCamera = () => {
-  if (streamRef.current) {
-    streamRef.current.getTracks().forEach(track => track.stop());
-    streamRef.current = null;
-  }
-
-  if (videoRef.current) {
-    videoRef.current.pause();
-    videoRef.current.srcObject = null;
-  }
-
-  setCameraActive(false);
-};
-const startCamera = async () => {
-  setCameraError("");
-
-  try {
-    // Stop previous stream if exists
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
     }
-
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: false
-    });
-
-    streamRef.current = stream;
 
     if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-
-      videoRef.current.onloadeddata = () => {
-        videoRef.current.play();
-      };
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
     }
 
-    setCameraActive(true);
+    setCameraActive(false);
+  };
 
-  } catch (err) {
-    console.error("Camera error:", err);
-    setCameraError("Unable to access camera. Check permissions.");
-  }
-};
+  const startCamera = async (preferBackCamera = false) => {
+    setCameraError("");
 
-const switchCamera = async () => {
-  if (videoDevices.length < 2) return;
+    try {
+      // Stop previous stream if exists
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
 
-  const currentIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId);
-  const nextIndex = (currentIndex + 1) % videoDevices.length;
+      // Enumerate available video devices
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevicesList = devices.filter(device => device.kind === 'videoinput');
+      setVideoDevices(videoDevicesList);
 
-  stopCamera();
-  setCurrentDeviceId(videoDevices[nextIndex].deviceId);
+      // Determine which camera to use
+      let selectedDeviceId = null;
 
-  setTimeout(() => {
-    startCamera();
-  }, 300);
-};
+      if (videoDevicesList.length > 1) {
+        // If multiple cameras, try to find back camera
+        const backCamera = videoDevicesList.find(device =>
+          device.label.toLowerCase().includes('back') ||
+          device.label.toLowerCase().includes('rear') ||
+          device.label.toLowerCase().includes('environment')
+        );
+
+        if (preferBackCamera && backCamera) {
+          selectedDeviceId = backCamera.deviceId;
+        } else if (!preferBackCamera && !currentDeviceId) {
+          // Default to back camera if no preference specified
+          selectedDeviceId = backCamera ? backCamera.deviceId : videoDevicesList[0].deviceId;
+        } else {
+          selectedDeviceId = currentDeviceId || videoDevicesList[0].deviceId;
+        }
+
+        setCurrentDeviceId(selectedDeviceId);
+      } else if (videoDevicesList.length === 1) {
+        selectedDeviceId = videoDevicesList[0].deviceId;
+        setCurrentDeviceId(selectedDeviceId);
+      }
+
+      // Build constraints
+      const constraints = {
+        audio: false,
+        video: selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId } }
+          : true
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+
+        videoRef.current.onloadeddata = () => {
+          videoRef.current.play();
+        };
+      }
+
+      setCameraActive(true);
+
+    } catch (err) {
+      console.error("Camera error:", err);
+      setCameraError("Unable to access camera. Check permissions.");
+    }
+  };
+
+  const switchCamera = async () => {
+    if (videoDevices.length < 2) {
+      setCameraError("Only one camera available");
+      return;
+    }
+
+    const currentIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId);
+    const nextIndex = (currentIndex + 1) % videoDevices.length;
+    const nextDevice = videoDevices[nextIndex];
+
+    stopCamera();
+    setCurrentDeviceId(nextDevice.deviceId);
+
+    setTimeout(() => {
+      startCamera(nextDevice.deviceId);
+    }, 300);
+  };
 
   const capturePhoto = async () => {
     try {
@@ -169,12 +527,18 @@ const switchCamera = async () => {
       setPreviewSrc(url);
       stopCamera();
       setSuccess('Photo captured');
+
+      // Run AI validation when photo is captured
+      if (formData.issueType && formData.issueType !== 'other') {
+        validateImage(url, formData.issueType).then(result => {
+          console.log('AI Validation result:', result);
+        });
+      }
     } catch (err) {
       console.error('Capture failed', err);
       setCameraError('Capture failed');
     }
   };
-
 
   const handleCopyMunicipality = async () => {
     const muni = formData.location.municipality || '';
@@ -207,81 +571,82 @@ const switchCamera = async () => {
     setSuccess('You can now enter location manually');
   };
 
-const handleGetLocation = () => {
-  if (!navigator.geolocation) {
-    setError('Geolocation is not supported by this browser');
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
-
-      // Save coordinates first
-      setFormData(prev => ({
-        ...prev,
-        latitude: lat,
-        longitude: lon
-      }));
-
-      // Reverse geocoding with better error handling
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`, {
-        headers: {
-          "Accept": "application/json"
-        }
-      })
-        .then(res => {
-          if (!res.ok) {
-            throw new Error("Reverse geocoding API failed");
-          }
-          return res.json();
-        })
-        .then(data => {
-          if (!data || !data.address) {
-            throw new Error("No address data");
-          }
-
-          const addr = data.address;
-
-          setFormData(prev => ({
-            ...prev,
-            location: {
-              streetName: addr.road || addr.pedestrian || addr.cycleway || '',
-              area: addr.neighbourhood || addr.suburb || addr.city_district || '',
-              city: addr.city || addr.town || addr.village || '',
-              district: addr.county || addr.state_district || '',
-              state: addr.state || '',
-              municipality: addr.city || addr.town || addr.village || addr.county || ''
-            }
-          }));
-
-          setSuccess('Location obtained successfully');
-        })
-        .catch((err) => {
-          console.error('Reverse geocode failed:', err);
-
-          // Fallback if API fails
-          setFormData(prev => ({
-            ...prev,
-            location: {
-              streetName: "GPS Location",
-              area: "",
-              city: `Lat: ${lat.toFixed(5)}`,
-              district: "",
-              state: "",
-              municipality: ""
-            }
-          }));
-
-          setSuccess('Location coordinates obtained (address lookup limited)');
-        });
-    },
-    (error) => {
-      setError('Could not get location: ' + error.message);
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by this browser');
+      return;
     }
-  );
-};
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+
+        // Save coordinates first
+        setFormData(prev => ({
+          ...prev,
+          latitude: lat,
+          longitude: lon
+        }));
+
+        // Reverse geocoding with better error handling
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`, {
+          headers: {
+            "Accept": "application/json"
+          }
+        })
+          .then(res => {
+            if (!res.ok) {
+              throw new Error("Reverse geocoding API failed");
+            }
+            return res.json();
+          })
+          .then(data => {
+            if (!data || !data.address) {
+              throw new Error("No address data");
+            }
+
+            const addr = data.address;
+
+            setFormData(prev => ({
+              ...prev,
+              location: {
+                streetName: addr.road || addr.pedestrian || addr.cycleway || '',
+                area: addr.neighbourhood || addr.suburb || addr.city_district || '',
+                city: addr.city || addr.town || addr.village || '',
+                district: addr.county || addr.state_district || '',
+                state: addr.state || '',
+                municipality: addr.city || addr.town || addr.village || addr.county || ''
+              }
+            }));
+
+            setSuccess('Location obtained successfully');
+          })
+          .catch((err) => {
+            console.error('Reverse geocode failed:', err);
+
+            // Fallback if API fails
+            setFormData(prev => ({
+              ...prev,
+              location: {
+                streetName: "GPS Location",
+                area: "",
+                city: `Lat: ${lat.toFixed(5)}`,
+                district: "",
+                state: "",
+                municipality: ""
+              }
+            }));
+
+            setSuccess('Location coordinates obtained (address lookup limited)');
+          });
+      },
+      (error) => {
+        setError('Could not get location: ' + error.message);
+      }
+    );
+  };
+
   const handleGetDirections = () => {
     if (formData.latitude && formData.longitude) {
       const mapsUrl = `https://www.google.com/maps?q=${formData.latitude},${formData.longitude}`;
@@ -300,6 +665,26 @@ const handleGetLocation = () => {
     const token = localStorage.getItem('token');
     if (!token) {
       setError('Please login first');
+      setLoading(false);
+      return;
+    }
+
+    // Check AI validation before submitting
+    if (formData.image && formData.issueType && formData.issueType !== 'other' && validationResult === 'fail') {
+      setError('AI validation failed. The uploaded image does not match the selected issue type. Please upload a relevant image.');
+      setLoading(false);
+      return;
+    }
+
+    // If model is still loading or validating, wait or show error
+    if (isModelLoading) {
+      setError('AI model is still loading. Please wait a moment and try again.');
+      setLoading(false);
+      return;
+    }
+
+    if (isValidating) {
+      setError('Image validation in progress. Please wait...');
       setLoading(false);
       return;
     }
@@ -366,7 +751,7 @@ const handleGetLocation = () => {
                 { key: 'pothole', label: 'Pothole' },
                 { key: 'garbage', label: 'Garbage Overflow' },
                 { key: 'streetlight', label: 'Streetlight Failure' },
-                { key: 'water_leak', label: 'Drainage Issue' },
+                { key: 'drainageissue', label: 'Drainage Issue' },
                 { key: 'damaged_road', label: 'Road Damage' },
                 { key: 'other', label: 'Other' }
               ].map((t) => (
@@ -513,22 +898,25 @@ const handleGetLocation = () => {
 
               {cameraActive && (
                 <div className="camera-box">
-<video
-  ref={videoRef}
-  autoPlay
-  playsInline
-  muted
-  style={{
-    width: "100%",
-    height: "300px",
-    objectFit: "cover",
-    borderRadius: "10px",
-    background: "black"
-  }}
-/>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{
+                      width: "100%",
+                      height: "300px",
+                      objectFit: "cover",
+                      borderRadius: "10px",
+                      background: "black"
+                    }}
+                  />
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button type="button" className="btn-location" onClick={capturePhoto}>Capture</button>
+                    {videoDevices.length > 1 && (
+                      <button type="button" className="btn-secondary" onClick={switchCamera}>Switch Camera</button>
+                    )}
                     <button type="button" className="btn-secondary" onClick={stopCamera}>Close</button>
                   </div>
                 </div>
@@ -537,6 +925,25 @@ const handleGetLocation = () => {
               {previewSrc && (
                 <div style={{ marginTop: 10 }}>
                   <img src={previewSrc} alt="preview" style={{ maxWidth: 180, borderRadius: 6 }} />
+                </div>
+              )}
+
+              {/* AI Validation Results */}
+              {isModelLoading && <div className="info">Loading AI model...</div>}
+              {isValidating && <div className="info">Validating image...</div>}
+              {validationResult && !isModelLoading && !isValidating && (
+                <div className={`validation-${validationResult}`} style={{ marginTop: 10 }}>
+                  {validationResult === 'pass' ? '✓ Image matches issue type' : '✗ Image does not match issue type'}
+                  {detectedLabels.length > 0 && (
+                    <div style={{ fontSize: '12px', marginTop: 5 }}>
+                      Detected: {detectedLabels.map(l => `${l.label} (${l.confidence}%)`).join(', ')}
+                    </div>
+                  )}
+                  {validationResult === 'fail' && topPredictions.length > 0 && (
+                    <div style={{ fontSize: '12px', marginTop: 5 }}>
+                      Top predictions: {topPredictions.map(l => `${l.label} (${l.confidence}%)`).join(', ')}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
